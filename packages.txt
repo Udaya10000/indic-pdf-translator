@@ -1,4 +1,3 @@
-# --- Streamlit Cloud (Debian 11) ---
 tesseract-ocr
 tesseract-ocr-bengali
 tesseract-ocr-gujarati
