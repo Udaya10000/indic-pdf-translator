@@ -5,7 +5,7 @@ translation (LibreTranslate OSS), PDF reconstruction (PyMuPDF).
 """
 
 import os
-import fitz  # PyMuPDF
+import pymupdf as fitz   # PyMuPDF ≥ 1.23
 import pytesseract
 from PIL import Image
 import io
