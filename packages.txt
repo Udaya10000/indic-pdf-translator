@@ -1,0 +1,15 @@
+tesseract-ocr
+tesseract-ocr-beng
+tesseract-ocr-dev
+tesseract-ocr-guj
+tesseract-ocr-kan
+tesseract-ocr-mls
+tesseract-ocr-ori
+tesseract-ocr-pan
+tesseract-ocr-san
+tesseract-ocr-tam
+tesseract-ocr-tel
+tesseract-ocr-urd
+libtesseract-dev
+libleptonica-dev
+poppler-utils
