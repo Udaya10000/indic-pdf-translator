@@ -1,14 +1,5 @@
 tesseract-ocr
-tesseract-ocr-bengali
-tesseract-ocr-gujarati
-tesseract-ocr-kannada
-tesseract-ocr-malayalam
-tesseract-ocr-odia
-tesseract-ocr-punjabi
-tesseract-ocr-sanskrit
-tesseract-ocr-tamil
-tesseract-ocr-telugu
-tesseract-ocr-urdu
+tesseract-ocr-all
 libtesseract-dev
 libleptonica-dev
 poppler-utils
