@@ -1,15 +1,15 @@
+# --- Streamlit Cloud (Debian 11) ---
 tesseract-ocr
-tesseract-ocr-beng
-tesseract-ocr-dev
-tesseract-ocr-guj
-tesseract-ocr-kan
-tesseract-ocr-mls
-tesseract-ocr-ori
-tesseract-ocr-pan
-tesseract-ocr-san
-tesseract-ocr-tam
-tesseract-ocr-tel
-tesseract-ocr-urd
+tesseract-ocr-bengali
+tesseract-ocr-gujarati
+tesseract-ocr-kannada
+tesseract-ocr-malayalam
+tesseract-ocr-odia
+tesseract-ocr-punjabi
+tesseract-ocr-sanskrit
+tesseract-ocr-tamil
+tesseract-ocr-telugu
+tesseract-ocr-urdu
 libtesseract-dev
 libleptonica-dev
 poppler-utils
