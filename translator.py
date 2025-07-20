@@ -1,41 +1,39 @@
 """
 translator.py  –  MIT License
-OCR (Tesseract 5.4 best), language detection (fastText),
+OCR (Tesseract 5.4), language detection (fastText),
 translation (LibreTranslate OSS), PDF reconstruction (PyMuPDF).
 """
 
 import os
-import pymupdf as fitz   # PyMuPDF ≥ 1.23
+import pathlib
+import requests
 import pytesseract
+import pymupdf as fitz
 from PIL import Image
 import io
-import requests
-import fasttext
-import pathlib
 import json
 import tqdm
 
-# ------------------------------------------------------------------
-# Constants
-# ------------------------------------------------------------------
-TESSDATA = pathlib.Path(__file__).parent / "tessdata_best"
-FASTTEXT_MODEL = pathlib.Path(__file__).parent / "lid.176.bin"
-LIBRE_URL = "http://libretranslate:5000/translate"  # default local endpoint
+# ----------------------------------------------------------------------
+# 1.  Download large files only when first needed
+# ----------------------------------------------------------------------
+FASTTEXT_URL = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.ftz"
+FASTTEXT_LOCAL = pathlib.Path(__file__).parent / "lid.176.ftz"
 
-# ------------------------------------------------------------------
-# Helpers
-# ------------------------------------------------------------------
 def get_fasttext_model():
-    if not FASTTEXT_MODEL.exists():
-        url = "https://dl.fbaipublicfiles.com/fasttext/supervised-models/lid.176.bin"
-        pathlib.Path(FASTTEXT_MODEL).write_bytes(requests.get(url).content)
-    return fasttext.load_model(str(FASTTEXT_MODEL))
+    """Return a fastText language-ID model (lazy download)."""
+    if not FASTTEXT_LOCAL.exists():
+        FASTTEXT_LOCAL.write_bytes(requests.get(FASTTEXT_URL, timeout=60).content)
+    import fasttext
+    return fasttext.load_model(str(FASTTEXT_LOCAL))
 
-def tess_lang(lang_code):
-    """
-    Map human names → tesseract script names.
-    Add more mappings as required.
-    """
+# ----------------------------------------------------------------------
+# 2.  Helpers
+# ----------------------------------------------------------------------
+LIBRE_URL = "https://libretranslate.com/translate"   # free, no key
+
+def tess_lang(lang_code: str) -> str:
+    """Map human name to Tesseract script identifier."""
     mapping = {
         "Hindi": "Devanagari",
         "Bengali": "Bengali",
@@ -56,101 +54,85 @@ def tess_lang(lang_code):
         "Dogri": "Devanagari",
         "Maithili": "Devanagari",
         "Manipuri": "Bengali",
-        "Santhali": "Bengali",  # Ol-Chiki not in tesseract
+        "Santhali": "Bengali",
         "Sindhi": "Arabic",
         "Kashmiri": "Arabic",
     }
     return mapping.get(lang_code, "Devanagari")
 
 def detect_language(texts):
+    """Return the dominant language code (e.g. 'en', 'hi')."""
     model = get_fasttext_model()
-    joined = " ".join(texts)
-    pred = model.predict(joined.replace("\n", " "), k=1)
+    joined = " ".join(texts).replace("\n", " ")
+    pred = model.predict(joined, k=1)
     lang = pred[0][0].replace("__label__", "")
-    # Map fastText code to human name
-    code2lang = json.loads(
-        pathlib.Path(__file__).parent.joinpath("lang_codes.json").read_text()
-    )
+    # tiny map fastText code → human name
+    code2lang = {"en": "English", "hi": "Hindi", "bn": "Bengali",
+                 "ta": "Tamil", "te": "Telugu", "mr": "Marathi",
+                 "gu": "Gujarati", "kn": "Kannada", "ml": "Malayalam",
+                 "or": "Odia", "pa": "Punjabi", "as": "Assamese",
+                 "ur": "Urdu", "sa": "Sanskrit", "ne": "Nepali",
+                 "kok": "Konkani", "brx": "Bodo", "doi": "Dogri",
+                 "mai": "Maithili", "mni": "Manipuri", "sat": "Santhali",
+                 "sd": "Sindhi", "ks": "Kashmiri"}
     return code2lang.get(lang, lang)
 
 def translate(text, source, target):
-    """
-    Uses a local LibreTranslate container; falls back to Google-free
-    if LIBRE_URL is unreachable (prints warning).
-    """
+    """Translate via LibreTranslate public endpoint (free)."""
     if source == target or not text.strip():
         return text
-    payload = {
-        "q": text,
-        "source": source,
-        "target": target,
-        "format": "text",
-    }
+    payload = {"q": text, "source": source, "target": target, "format": "text"}
     try:
         r = requests.post(LIBRE_URL, data=payload, timeout=30)
         r.raise_for_status()
         return r.json()["translatedText"]
-    except Exception as e:
-        print("LibreTranslate unavailable:", e)
+    except Exception:
         return text  # graceful fallback
 
-# ------------------------------------------------------------------
-# Main routine
-# ------------------------------------------------------------------
+# ----------------------------------------------------------------------
+# 3.  Main routine
+# ----------------------------------------------------------------------
 def process_pdf(src_path, dst_path, target_lang=None):
     doc = fitz.open(src_path)
     all_texts = []
 
-    # 1. Collect text (native or OCR)
+    # 1. Extract / OCR text per page
     for page in tqdm.tqdm(doc, desc="OCR"):
-        if page.get_text().strip():  # native PDF
+        if page.get_text().strip():
             all_texts.append(page.get_text())
         else:  # scanned image
-            mat = fitz.Matrix(2, 2)  # 2× DPI
+            mat = fitz.Matrix(2, 2)
             pix = page.get_pixmap(matrix=mat)
             img = Image.open(io.BytesIO(pix.tobytes()))
-            # Detect script per page (cheap heuristic)
-            lang_hint = detect_language([page.get_text()])
-            tess_lang_code = tess_lang(lang_hint)
+            lang = detect_language([page.get_text()])
+            tess_lang_code = tess_lang(lang)
             text = pytesseract.image_to_string(
                 img,
                 lang=tess_lang_code,
-                config=f"--tessdata-dir {TESSDATA}",
+                config="--tessdata-dir /usr/share/tesseract-ocr/4.00/tessdata"
             )
             all_texts.append(text)
 
     detected_lang = detect_language(all_texts)
     if target_lang is None:
-        target_lang = "English"  # default when auto-detect chosen
-
-    # 2. Translate page-by-page
+        target_lang = "English"
     translated_pages = [translate(t, detected_lang, target_lang) for t in all_texts]
 
-    # 3. Re-assemble PDF
+    # 2. Re-assemble PDF
     out = fitz.open()
     for idx, (page, new_text) in enumerate(zip(doc, translated_pages)):
         rect = page.rect
         new_page = out.new_page(width=rect.width, height=rect.height)
 
-        if page.get_text().strip():  # native → replace text
+        if page.get_text().strip():  # native PDF → replace text
             new_page.insert_text(
-                fitz.Point(72, 72),
-                new_text,
-                fontname="helv",
-                fontsize=11,
-                rotate=0,
+                fitz.Point(72, 72), new_text, fontname="helv", fontsize=11
             )
         else:  # scanned → overlay
             new_page.insert_text(
-                fitz.Point(72, 72),
-                new_text,
-                fontname="helv",
-                fontsize=11,
-                rotate=0,
-                color=(1, 0, 0),
+                fitz.Point(72, 72), new_text, fontname="helv", fontsize=11, color=(1, 0, 0)
             )
-            # TODO: keep images + overlay exact bounding boxes
-        # Copy original images
+        # copy original images
         for img in page.get_images(full=True):
             xref = img[0]
             pix = fitz.Pixmap(doc, xref)
